@@ -41,6 +41,10 @@ class EcovacsAccount extends IPSModule
         'Content-Type: application/json',
     ];
 
+    private const PUBLIC_KEY_CONFIG = 'PUBLIC.KEY.CONFIG';
+    private const ANDROID_MODEL = 'Pixel 7';
+    private const ANDROID_SYSTEM = 'Android 14';
+
     public function Create(): void
     {
         parent::Create();
@@ -75,6 +79,10 @@ class EcovacsAccount extends IPSModule
     {
         $this->WriteAttributeInteger('EcoExpiresAt', 0);
         if (!$this->ensureSession()) {
+            $status = IPS_GetInstance($this->InstanceID)['InstanceStatus'];
+            if ($status === 202) {
+                return $this->Translate('Geräteverifizierung per E-Mail-Code erforderlich -- zuerst "E-Mail-Code anfordern" klicken, danach den Code aus der E-Mail eintragen und "Code bestätigen" klicken.');
+            }
             return $this->Translate('Anmeldung fehlgeschlagen -- Details im IPS-Log.');
         }
 
@@ -159,6 +167,67 @@ class EcovacsAccount extends IPSModule
         return json_encode($resp ?? ['ret' => 'fail', 'errno' => 0, 'error' => 'request failed']);
     }
 
+    /**
+     * Ecovacs requires a one-time e-mail verification for a device id it
+     * hasn't seen before (login fails with code 1013). Call this first,
+     * then VerifyDevice() with the code from the e-mail -- afterwards this
+     * device id is trusted and normal login() works without it again.
+     */
+    public function RequestVerificationCode(): string
+    {
+        $account = trim($this->ReadPropertyString('account'));
+        if ($account === '') {
+            return $this->Translate('Zuerst E-Mail-Adresse und Passwort eintragen und speichern.');
+        }
+
+        $encryptedEmail = $this->encryptForRsa($account);
+        if ($encryptedEmail === null) {
+            return $this->Translate('Verschlüsselung fehlgeschlagen -- Details im IPS-Log.');
+        }
+
+        $result = $this->callPrivateApi('user/sendEmailVerifyCode', [
+            'encryptEmail' => $encryptedEmail,
+            'verifyType'   => 'EMAIL_VERIFY_DEVICE',
+            'supportChar'  => 'N',
+            'isForce'      => 'N',
+        ]);
+        if ($result['code'] !== '0000') {
+            return $this->Translate('Anfordern fehlgeschlagen -- Details im IPS-Log.');
+        }
+        return $this->Translate('Code angefordert -- bitte E-Mail-Postfach prüfen, Code unten eintragen und "Code bestätigen" klicken.');
+    }
+
+    /** Completes the login using the one-time e-mail code from RequestVerificationCode(). */
+    public function VerifyDevice(string $code): string
+    {
+        $account = trim($this->ReadPropertyString('account'));
+        $code = trim($code);
+        if ($account === '' || $code === '') {
+            return $this->Translate('E-Mail-Adresse und Code werden benötigt.');
+        }
+
+        $encryptedAccount = $this->encryptForRsa($account);
+        if ($encryptedAccount === null) {
+            return $this->Translate('Verschlüsselung fehlgeschlagen -- Details im IPS-Log.');
+        }
+
+        $result = $this->callPrivateApi('user/verifyDevice', [
+            'encryptAccount' => $encryptedAccount,
+            'backUpEmail'    => '',
+            'verifyCode'     => $code,
+            'model'          => self::ANDROID_MODEL,
+            'system'         => self::ANDROID_SYSTEM,
+        ]);
+        if ($result['code'] !== '0000') {
+            return $this->Translate('Bestätigung fehlgeschlagen -- falscher oder abgelaufener Code? Details im IPS-Log.');
+        }
+
+        if (!$this->completeLogin($result['data'])) {
+            return $this->Translate('Gerät bestätigt, aber Anmeldung danach fehlgeschlagen -- Details im IPS-Log.');
+        }
+        return $this->Translate('Gerät bestätigt und angemeldet.');
+    }
+
     /** Reuses the cached Ecovacs session (token/userid) while valid, otherwise redoes the full login. */
     private function ensureSession(): bool
     {
@@ -182,46 +251,68 @@ class EcovacsAccount extends IPSModule
         try {
             $passwordHash = md5($password);
 
-            $loginResp = $this->callPrivateApi('user/login', [
+            $result = $this->callPrivateApi('user/login', [
                 'account'  => $account,
                 'password' => $passwordHash,
             ]);
-            if (!isset($loginResp['uid'], $loginResp['accessToken'])) {
-                $this->LogMessage('EcovacsAccount: Login-Antwort unvollständig: ' . $this->truncate(json_encode($loginResp)), KL_ERROR);
+
+            if ($result['code'] === '1013') {
+                $this->SetStatus(202);
+                $this->LogMessage('EcovacsAccount: Geräteverifizierung per E-Mail-Code erforderlich -- Buttons "E-Mail-Code anfordern" / "Code bestätigen" in der Instanzkonfiguration verwenden.', KL_ERROR);
+                return false;
+            }
+            if ($result['code'] === '1005' || $result['code'] === '1010') {
+                $this->LogMessage('EcovacsAccount: Benutzername oder Passwort falsch (Code ' . $result['code'] . ')', KL_ERROR);
                 $this->SetStatus(201);
                 return false;
             }
-            $uid = (string) $loginResp['uid'];
-            $accessToken = (string) $loginResp['accessToken'];
-
-            $authCode = $this->callAuthApi($accessToken, $uid);
-            if ($authCode === null) {
-                $this->SetStatus(201);
-                return false;
-            }
-
-            $tokenResp = $this->loginByItToken($uid, $authCode);
-            if ($tokenResp === null || ($tokenResp['result'] ?? '') !== 'ok') {
-                $this->LogMessage('EcovacsAccount: loginByItToken fehlgeschlagen: ' . $this->truncate(json_encode($tokenResp)), KL_ERROR);
+            if ($result['code'] !== '0000') {
                 $this->SetStatus(201);
                 return false;
             }
 
-            $finalUserId = (string) ($tokenResp['userId'] ?? $uid);
-            $finalToken = (string) $tokenResp['token'];
-            $validForMs = (int) ($tokenResp['last'] ?? 604800000);
-            $expiresAt = (int) (time() + ($validForMs / 1000 * 0.99));
-
-            $this->WriteAttributeString('EcoUserId', $finalUserId);
-            $this->WriteAttributeString('EcoToken', $finalToken);
-            $this->WriteAttributeInteger('EcoExpiresAt', $expiresAt);
-            $this->SetStatus(102);
-            return true;
+            return $this->completeLogin($result['data']);
         } catch (\Throwable $e) {
             $this->LogMessage('EcovacsAccount Login: ' . $e->getMessage(), KL_ERROR);
             $this->SetStatus(201);
             return false;
         }
+    }
+
+    /** Shared tail of both normal login() and VerifyDevice(): uid/accessToken -> authCode -> portal session token. */
+    private function completeLogin(array $loginResp): bool
+    {
+        if (!isset($loginResp['uid'], $loginResp['accessToken'])) {
+            $this->LogMessage('EcovacsAccount: Login-Antwort unvollständig: ' . $this->truncate(json_encode($loginResp)), KL_ERROR);
+            $this->SetStatus(201);
+            return false;
+        }
+        $uid = (string) $loginResp['uid'];
+        $accessToken = (string) $loginResp['accessToken'];
+
+        $authCode = $this->callAuthApi($accessToken, $uid);
+        if ($authCode === null) {
+            $this->SetStatus(201);
+            return false;
+        }
+
+        $tokenResp = $this->loginByItToken($uid, $authCode);
+        if ($tokenResp === null || ($tokenResp['result'] ?? '') !== 'ok') {
+            $this->LogMessage('EcovacsAccount: loginByItToken fehlgeschlagen: ' . $this->truncate(json_encode($tokenResp)), KL_ERROR);
+            $this->SetStatus(201);
+            return false;
+        }
+
+        $finalUserId = (string) ($tokenResp['userId'] ?? $uid);
+        $finalToken = (string) $tokenResp['token'];
+        $validForMs = (int) ($tokenResp['last'] ?? 604800000);
+        $expiresAt = (int) (time() + ($validForMs / 1000 * 0.99));
+
+        $this->WriteAttributeString('EcoUserId', $finalUserId);
+        $this->WriteAttributeString('EcoToken', $finalToken);
+        $this->WriteAttributeInteger('EcoExpiresAt', $expiresAt);
+        $this->SetStatus(102);
+        return true;
     }
 
     /** users/user.do?todo=GetDeviceList -- returns this account's robots. */
@@ -267,7 +358,7 @@ class EcovacsAccount extends IPSModule
         return is_array($data) ? $data : null;
     }
 
-    /** Calls a signed "private" auth-API GET endpoint (user/login, common/getConfig, ...). Returns the response's "data" on success. */
+    /** Calls a signed "private" auth-API GET endpoint (user/login, common/getConfig, ...). Returns ['code' => string, 'data' => array]. */
     private function callPrivateApi(string $endpoint, array $params): array
     {
         $deviceId = $this->deviceId();
@@ -310,12 +401,12 @@ class EcovacsAccount extends IPSModule
         $signedParams = $this->sign($params, ['openId' => 'global'], self::AUTH_CLIENT_KEY, self::AUTH_CLIENT_SECRET);
 
         $url = self::AUTH_CODE_URL . '/v1/global/auth/getAuthCode';
-        $data = $this->doAuthRequest($url, $signedParams);
-        if (!isset($data['authCode'])) {
-            $this->LogMessage('EcovacsAccount: getAuthCode-Antwort ohne authCode: ' . $this->truncate(json_encode($data)), KL_ERROR);
+        $result = $this->doAuthRequest($url, $signedParams);
+        if ($result['code'] !== '0000' || !isset($result['data']['authCode'])) {
+            $this->LogMessage('EcovacsAccount: getAuthCode fehlgeschlagen (Code ' . $result['code'] . ')', KL_ERROR);
             return null;
         }
-        return (string) $data['authCode'];
+        return (string) $result['data']['authCode'];
     }
 
     /** users/user.do?todo=loginByItToken -- exchanges the auth code for the actual portal session token. */
@@ -343,7 +434,7 @@ class EcovacsAccount extends IPSModule
         return is_array($data) ? $data : null;
     }
 
-    /** GET request + Ecovacs' {code,msg,data} envelope handling, shared by callPrivateApi and callAuthApi. */
+    /** GET request + Ecovacs' {code,msg,data} envelope handling, shared by callPrivateApi and callAuthApi. Returns ['code' => string, 'data' => array]. */
     private function doAuthRequest(string $url, array $params): array
     {
         $fullUrl = $url . '?' . http_build_query($params);
@@ -351,23 +442,57 @@ class EcovacsAccount extends IPSModule
         $json = json_decode($resp['body'], true);
         if (!is_array($json)) {
             $this->LogMessage('EcovacsAccount: ungültige Antwort von ' . $url . ' (HTTP ' . $resp['status'] . '): ' . $this->truncate($resp['body']), KL_ERROR);
-            return [];
+            return ['code' => '', 'data' => []];
         }
 
         $code = (string) ($json['code'] ?? '');
-        if ($code === '0000') {
-            return is_array($json['data'] ?? null) ? $json['data'] : [];
+        $data = is_array($json['data'] ?? null) ? $json['data'] : [];
+        if ($code !== '0000') {
+            $msg = (string) ($json['msg'] ?? '');
+            $this->LogMessage('EcovacsAccount: Anfrage an ' . $url . ' fehlgeschlagen, Code ' . $code . ($msg !== '' ? ' (' . $msg . ')' : ''), KL_ERROR);
+        }
+        return ['code' => $code, 'data' => $data];
+    }
+
+    /** Fetches and PEM-wraps Ecovacs' RSA public key (common/getConfig), used to encrypt the account e-mail for device verification. */
+    private function getPublicKeyPem(): ?string
+    {
+        $result = $this->callPrivateApi('common/getConfig', ['keys' => self::PUBLIC_KEY_CONFIG]);
+        if ($result['code'] !== '0000') {
+            return null;
         }
 
-        $msg = (string) ($json['msg'] ?? '');
-        if ($code === '1013') {
-            $this->LogMessage('EcovacsAccount: Ecovacs verlangt eine Geräteverifizierung per E-Mail-Code für diesen Server-Login (Code 1013) -- das unterstützt dieses Modul noch nicht. Einmal in der offiziellen Ecovacs-App neu einloggen und erneut versuchen.', KL_ERROR);
-        } elseif ($code === '1005' || $code === '1010') {
-            $this->LogMessage('EcovacsAccount: Benutzername oder Passwort falsch (Code ' . $code . '): ' . $msg, KL_ERROR);
-        } else {
-            $this->LogMessage('EcovacsAccount: Anfrage an ' . $url . ' fehlgeschlagen, Code ' . $code . ': ' . $msg, KL_ERROR);
+        foreach ($result['data'] as $entry) {
+            if (!is_array($entry) || ($entry['key'] ?? '') !== self::PUBLIC_KEY_CONFIG || !isset($entry['value'])) {
+                continue;
+            }
+            $decoded = json_decode((string) $entry['value'], true);
+            $base64Der = $decoded['publicKey'] ?? null;
+            if (is_string($base64Der) && $base64Der !== '') {
+                return "-----BEGIN PUBLIC KEY-----\n" . chunk_split($base64Der, 64, "\n") . "-----END PUBLIC KEY-----\n";
+            }
         }
-        return [];
+        $this->LogMessage('EcovacsAccount: Antwort auf common/getConfig enthält keinen öffentlichen Schlüssel', KL_ERROR);
+        return null;
+    }
+
+    /** RSA/PKCS1v15-encrypts (as Ecovacs' Android app does) and base64-encodes a plaintext, for the device-verification endpoints. */
+    private function encryptForRsa(string $plaintext): ?string
+    {
+        $pem = $this->getPublicKeyPem();
+        if ($pem === null) {
+            return null;
+        }
+        $publicKey = openssl_pkey_get_public($pem);
+        if ($publicKey === false) {
+            $this->LogMessage('EcovacsAccount: öffentlicher Schlüssel ungültig: ' . openssl_error_string(), KL_ERROR);
+            return null;
+        }
+        if (!openssl_public_encrypt($plaintext, $encrypted, $publicKey, OPENSSL_PKCS1_PADDING)) {
+            $this->LogMessage('EcovacsAccount: RSA-Verschlüsselung fehlgeschlagen: ' . openssl_error_string(), KL_ERROR);
+            return null;
+        }
+        return base64_encode($encrypted);
     }
 
     /** MD5 request signing shared by every signed auth-API call: md5(key + sorted "k=v" pairs + secret). */

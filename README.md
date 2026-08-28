@@ -25,6 +25,6 @@ Jede Saugroboter-Instanz fragt ihren Status eigenständig über die gemeinsame K
 - **Lädt** (an der Basisstation)
 - **Status**: Reinigt / Pausiert / Kehrt zur Basis zurück / Lädt / Bereit / Offline / Unbekannt
 
-## Bekannte Einschränkung
+## Geräteverifizierung (nur beim ersten Login nötig)
 
-Falls Ecovacs bei der Anmeldung eine Geräteverifizierung per E-Mail-Code verlangt (neues/unbekanntes Gerät, Fehlercode 1013 im IPS-Log), unterstützt dieses Modul das aktuell noch nicht -- in diesem Fall einmal in der offiziellen Ecovacs-App neu einloggen und es erneut versuchen.
+Ecovacs verlangt bei einem neuen/unbekannten Geräte-Login eine einmalige Bestätigung per E-Mail-Code (Fehlercode 1013 im IPS-Log, Instanzstatus "Geräteverifizierung ... erforderlich"). In diesem Fall in der Konto-Instanz das aufklappbare Feld "Geräteverifizierung" öffnen: zuerst "E-Mail-Code anfordern" klicken, den per E-Mail zugestellten Code eintragen und "Code bestätigen" klicken. Danach ist die virtuelle Geräte-ID dauerhaft bei Ecovacs bekannt -- der Schritt muss nicht wiederholt werden, auch nicht wenn die Sitzung später abläuft.

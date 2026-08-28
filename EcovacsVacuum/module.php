@@ -13,7 +13,7 @@ declare(strict_types=1);
  * state). Control commands (start/pause/stop/dock/fan speed) are a planned
  * follow-up once this connection has been verified stable.
  */
-class EcovacsVacuum extends IPSModule
+class EcovacsSaugroboter extends IPSModule
 {
     public function Create(): void
     {

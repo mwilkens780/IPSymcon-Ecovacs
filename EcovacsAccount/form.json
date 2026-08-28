@@ -13,6 +13,32 @@
     {
       "type": "Label",
       "caption": "Die gleichen Zugangsdaten wie in der Ecovacs-App. Ecovacs bietet keine offizielle API an -- dieses Modul nutzt die gleiche inoffizielle Anmeldung wie die Ecovacs-App / Home-Assistant-Integration."
+    },
+    {
+      "type": "ExpansionPanel",
+      "caption": "Geräteverifizierung (nur falls beim Verbindungstest verlangt)",
+      "expanded": false,
+      "items": [
+        {
+          "type": "Label",
+          "caption": "Meldet der Verbindungstest 'Geräteverifizierung per E-Mail-Code erforderlich': zuerst 'E-Mail-Code anfordern' klicken, den Code aus der Ecovacs-E-Mail unten eintragen und 'Code bestätigen' klicken. Danach ist dieses (virtuelle) Gerät dauerhaft bei Ecovacs bekannt -- dieser Schritt ist nur einmalig nötig."
+        },
+        {
+          "type": "Button",
+          "caption": "E-Mail-Code anfordern",
+          "onClick": "echo ECO_RequestVerificationCode($id);"
+        },
+        {
+          "type": "ValidationTextBox",
+          "name": "verification_code",
+          "caption": "Code aus der E-Mail"
+        },
+        {
+          "type": "Button",
+          "caption": "Code bestätigen",
+          "onClick": "echo ECO_VerifyDevice($id, $verification_code);"
+        }
+      ]
     }
   ],
   "actions": [
@@ -24,6 +50,7 @@
   ],
   "status": [
     { "code": 102, "icon": "active",   "caption": "Aktiv" },
-    { "code": 201, "icon": "inactive", "caption": "Nicht konfiguriert -- E-Mail-Adresse und Passwort eintragen" }
+    { "code": 201, "icon": "inactive", "caption": "Nicht konfiguriert -- E-Mail-Adresse und Passwort eintragen" },
+    { "code": 202, "icon": "inactive", "caption": "Geräteverifizierung per E-Mail-Code erforderlich -- siehe unten" }
   ]
 }
