@@ -1,0 +1,49 @@
+{
+  "elements": [
+    {
+      "type": "SelectInstance",
+      "name": "account_instance",
+      "caption": "Ecovacs-Konto-Instanz",
+      "validModules": ["{B357553D-5DDB-452C-9E0C-0DCF6AACF2BE}"]
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "device_id",
+      "caption": "Geräte-ID (did)"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "resource",
+      "caption": "Resource"
+    },
+    {
+      "type": "ValidationTextBox",
+      "name": "device_class",
+      "caption": "Geräteklasse (class)"
+    },
+    {
+      "type": "Label",
+      "caption": "did / resource / class über den Button 'Verbindung testen / Geräte auflisten' in der Konto-Instanz ermitteln -- dort werden alle gefundenen Geräte mit diesen Werten aufgelistet."
+    },
+    {
+      "type": "NumberSpinner",
+      "name": "update_interval",
+      "caption": "Aktualisierungsintervall (Sekunden)",
+      "minimum": 30,
+      "suffix": "s"
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Jetzt aktualisieren",
+      "onClick": "ECOV_Refresh($id);"
+    }
+  ],
+  "status": [
+    { "code": 102, "icon": "active",   "caption": "Aktiv" },
+    { "code": 104, "icon": "inactive", "caption": "Gerät offline" },
+    { "code": 200, "icon": "error",    "caption": "Fehler – Details im IPS-Log" },
+    { "code": 201, "icon": "inactive", "caption": "Nicht konfiguriert -- Konto-Instanz und Geräte-ID setzen" }
+  ]
+}

@@ -1,0 +1,30 @@
+# Ecovacs – IP-Symcon Modul
+
+Bindet Ecovacs-Saugroboter (Deebot) in IP-Symcon ein. Ecovacs bietet keine offizielle API an -- dieses Modul nutzt die gleiche inoffizielle Anmeldung wie die Ecovacs-App bzw. die Home-Assistant-Integration (`deebot_client`).
+
+**Phase 1 (dieser Stand):** Login, Geräteliste und Status-Anzeige (Batterie, Lade-/Reinigungsstatus). Steuerung (Start/Pause/Stopp/Andocken/Saugstufe) ist als Phase 2 geplant, nachdem diese Verbindung sich als stabil erwiesen hat -- die dafür nötige REST-Schnittstelle (`iot/devmanager.do`) ist bereits die gleiche, die auch für die Status-Abfragen verwendet wird, es muss also keine eigene MQTT-Anbindung mehr gebaut werden.
+
+## Installation
+
+Modulverwaltung → + → URL eintragen:
+```
+https://github.com/mwilkens780/IPSymcon-Ecovacs
+```
+
+## Konfiguration
+
+1. **Ecovacs-Konto-Instanz** anlegen, dort die Ecovacs-E-Mail-Adresse und das Passwort eintragen (dieselben Zugangsdaten wie in der Ecovacs-App).
+2. Über den Button **"Verbindung testen / Geräte auflisten"** in der Konto-Instanz prüfen, ob die Anmeldung funktioniert -- bei Erfolg werden alle gefundenen Geräte mit `did` (Geräte-ID), `resource` und `class` (Geräteklasse) aufgelistet.
+3. Für jeden Saugroboter eine eigene **Ecovacs-Saugroboter**-Instanz anlegen, dort die Konto-Instanz auswählen und `did`/`resource`/`class` aus Schritt 2 eintragen.
+
+Jede Saugroboter-Instanz fragt ihren Status eigenständig über die gemeinsame Konto-Instanz ab (Login/Session wird dort einmalig verwaltet, nicht pro Roboter).
+
+## Angezeigte Werte
+
+- **Batterie** (%)
+- **Lädt** (an der Basisstation)
+- **Status**: Reinigt / Pausiert / Kehrt zur Basis zurück / Lädt / Bereit / Offline / Unbekannt
+
+## Bekannte Einschränkung
+
+Falls Ecovacs bei der Anmeldung eine Geräteverifizierung per E-Mail-Code verlangt (neues/unbekanntes Gerät, Fehlercode 1013 im IPS-Log), unterstützt dieses Modul das aktuell noch nicht -- in diesem Fall einmal in der offiziellen Ecovacs-App neu einloggen und es erneut versuchen.

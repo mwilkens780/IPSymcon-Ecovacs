@@ -1,0 +1,29 @@
+{
+  "elements": [
+    {
+      "type": "ValidationTextBox",
+      "name": "account",
+      "caption": "Ecovacs-E-Mail-Adresse"
+    },
+    {
+      "type": "PasswordTextBox",
+      "name": "password",
+      "caption": "Passwort"
+    },
+    {
+      "type": "Label",
+      "caption": "Die gleichen Zugangsdaten wie in der Ecovacs-App. Ecovacs bietet keine offizielle API an -- dieses Modul nutzt die gleiche inoffizielle Anmeldung wie die Ecovacs-App / Home-Assistant-Integration."
+    }
+  ],
+  "actions": [
+    {
+      "type": "Button",
+      "caption": "Verbindung testen / Geräte auflisten",
+      "onClick": "echo ECO_TestConnection($id);"
+    }
+  ],
+  "status": [
+    { "code": 102, "icon": "active",   "caption": "Aktiv" },
+    { "code": 201, "icon": "inactive", "caption": "Nicht konfiguriert -- E-Mail-Adresse und Passwort eintragen" }
+  ]
+}

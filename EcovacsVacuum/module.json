@@ -1,0 +1,12 @@
+{
+    "id": "{EB763124-CE12-4CA8-943D-63BC93C61281}",
+    "name": "Ecovacs Saugroboter",
+    "type": 3,
+    "vendor": "Martin Wilkens",
+    "aliases": [],
+    "dependencies": [],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "ECOV"
+}

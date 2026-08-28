@@ -1,0 +1,12 @@
+{
+    "id": "{B357553D-5DDB-452C-9E0C-0DCF6AACF2BE}",
+    "name": "Ecovacs Account",
+    "type": 3,
+    "vendor": "Martin Wilkens",
+    "aliases": [],
+    "dependencies": [],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "ECO"
+}

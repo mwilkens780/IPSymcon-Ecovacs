@@ -1,0 +1,10 @@
+{
+    "id": "{A6AFDB8A-4C25-48B3-A5DB-277C97D5F423}",
+    "author": "Martin Wilkens",
+    "name": "Ecovacs",
+    "description": "Ecovacs-Saugroboter in IP-Symcon einbinden und auslesen, da Ecovacs keine offizielle API anbietet. Phase 1: Login, Geräteliste und Status-Anzeige (Batterie, Reinigungs-/Lade-Status) je Roboter.",
+    "version": "1.0",
+    "build": 1,
+    "date": 1787931351,
+    "url": "https://github.com/mwilkens780/IPSymcon-Ecovacs"
+}
