@@ -74,10 +74,15 @@ class EcovacsAccount extends IPSModule
         $this->SetStatus(102);
     }
 
-    /** Forces a fresh login and device query, returns a human-readable summary for the config-panel button. */
+    /**
+     * Verifies the connection and lists devices, for the config-panel button.
+     * Reuses a still-valid cached session instead of forcing a fresh login --
+     * Ecovacs' login endpoint is fragile enough (see the device-verification
+     * flow below) that discarding a working session just to "test" it can
+     * itself break a login that was working a moment ago.
+     */
     public function TestConnection(): string
     {
-        $this->WriteAttributeInteger('EcoExpiresAt', 0);
         if (!$this->ensureSession()) {
             $status = IPS_GetInstance($this->InstanceID)['InstanceStatus'];
             if ($status === 202) {
@@ -194,6 +199,7 @@ class EcovacsAccount extends IPSModule
         if ($result['code'] !== '0000') {
             return $this->Translate('Anfordern fehlgeschlagen -- Details im IPS-Log.');
         }
+        $this->LogMessage('EcovacsAccount: E-Mail-Verifizierungscode angefordert', KL_MESSAGE);
         return $this->Translate('Code angefordert -- bitte E-Mail-Postfach prüfen, Code unten eintragen und "Code bestätigen" klicken.');
     }
 
@@ -312,6 +318,7 @@ class EcovacsAccount extends IPSModule
         $this->WriteAttributeString('EcoToken', $finalToken);
         $this->WriteAttributeInteger('EcoExpiresAt', $expiresAt);
         $this->SetStatus(102);
+        $this->LogMessage('EcovacsAccount: Anmeldung erfolgreich, Sitzung gültig bis ' . date('Y-m-d H:i:s', $expiresAt), KL_MESSAGE);
         return true;
     }
 
