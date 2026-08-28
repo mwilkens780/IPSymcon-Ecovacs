@@ -287,7 +287,7 @@ class EcovacsSaugroboter extends IPSModule
 
     public function GetVisualizationTile(): string
     {
-        $name = htmlspecialchars($this->GetName(), ENT_QUOTES, 'UTF-8');
+        $name = htmlspecialchars(IPS_GetName($this->InstanceID), ENT_QUOTES, 'UTF-8');
         $battery = $this->GetValue('Battery');
         $charging = $this->GetValue('Charging');
         $state = htmlspecialchars($this->GetValue('State'), ENT_QUOTES, 'UTF-8');
