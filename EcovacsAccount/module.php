@@ -173,6 +173,30 @@ class EcovacsAccount extends IPSModule
     }
 
     /**
+     * Returns the device's recent cleaning sessions as a JSON array of
+     * {ts, area, last, type, stopReason} (timestamp/area-m²/duration-seconds/
+     * clean-type/stop-reason-code), newest first. Uses a different REST
+     * endpoint (lg/log.do) than ExecuteCommand() -- not part of the
+     * iot/devmanager.do command set.
+     */
+    public function GetCleanLogs(string $did, string $resource): string
+    {
+        if (!$this->ensureSession()) {
+            return '[]';
+        }
+
+        $userId = $this->ReadAttributeString('EcoUserId');
+        $body = ['td' => 'GetCleanLogs', 'did' => $did, 'resource' => $resource];
+        $queryParams = ['td' => 'GetCleanLogs', 'u' => $userId, 'cv' => '1.67.3', 't' => 'a', 'av' => '1.3.1'];
+
+        $resp = $this->postAuthenticated('lg/log.do', $body, $queryParams);
+        if ($resp === null || ($resp['ret'] ?? '') !== 'ok' || !is_array($resp['logs'] ?? null)) {
+            return '[]';
+        }
+        return json_encode($resp['logs']);
+    }
+
+    /**
      * Ecovacs requires a one-time e-mail verification for a device id it
      * hasn't seen before (login fails with code 1013). Call this first,
      * then VerifyDevice() with the code from the e-mail -- afterwards this

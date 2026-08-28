@@ -30,12 +30,19 @@ class EcovacsSaugroboter extends IPSModule
         $this->RegisterVariableBoolean('Charging', $this->Translate('Lädt'), '~Switch', 2);
         $this->RegisterVariableString('State', $this->Translate('Status'), '', 3);
         $this->RegisterVariableInteger('FanSpeed', $this->Translate('Saugstufe'), '', 4);
+        $this->RegisterVariableString('LastClean', $this->Translate('Letzte Reinigung'), '', 5);
 
         // Internal (Ecovacs' own vocabulary, not translated) mirror of the
         // "State" variable -- Clean() needs to know if the robot is
         // currently paused (to resume instead of restart) without having to
         // parse the translated display string back out.
         $this->RegisterAttributeString('RawState', 'unknown');
+
+        // Cached JSON array of the last few cleaning sessions (from
+        // ECO_GetCleanLogs) for the tile's history list -- refreshed once
+        // per cycle alongside status, not exposed as separate variables
+        // since it's a variable-length list.
+        $this->RegisterAttributeString('CleanLogsJson', '[]');
 
         $this->RegisterTimer('UpdateTimer', 0, 'ECOV_Refresh($_IPS[\'TARGET\']);');
         $this->SetVisualizationType(1);
@@ -93,6 +100,8 @@ class EcovacsSaugroboter extends IPSModule
                 $this->SetValue('FanSpeed', (int) $speedData['speed']);
             }
 
+            $this->refreshCleanLogs($accountId, $did, $resource);
+
             $this->SetStatus(102);
         } catch (\Throwable $e) {
             $this->LogMessage('EcovacsVacuum Refresh: ' . $e->getMessage(), KL_ERROR);
@@ -132,6 +141,42 @@ class EcovacsSaugroboter extends IPSModule
         }
 
         return is_array($body['data'] ?? null) ? $body['data'] : [];
+    }
+
+    /** Fetches the last cleaning sessions (ECO_GetCleanLogs), caches them for the tile's history list and updates "Letzte Reinigung". */
+    private function refreshCleanLogs(int $accountId, string $did, string $resource): void
+    {
+        $raw = ECO_GetCleanLogs($accountId, $did, $resource);
+        $logs = json_decode($raw, true);
+        if (!is_array($logs)) {
+            return;
+        }
+
+        $this->WriteAttributeString('CleanLogsJson', json_encode($logs));
+        if (count($logs) > 0) {
+            $this->SetValue('LastClean', $this->formatCleanLogEntry($logs[0]));
+        }
+    }
+
+    /** One cleaning session -> "28.08.2026, 18:32 Uhr – 42 Min, 24 m²". */
+    private function formatCleanLogEntry(array $entry): string
+    {
+        $when = isset($entry['ts']) ? date('d.m.Y, H:i \U\h\r', (int) $entry['ts']) : '?';
+        $minutes = isset($entry['last']) ? (int) round(((int) $entry['last']) / 60) : null;
+        $area = isset($entry['area']) ? (int) $entry['area'] : null;
+
+        $parts = [$when];
+        $detail = [];
+        if ($minutes !== null) {
+            $detail[] = $minutes . ' Min';
+        }
+        if ($area !== null) {
+            $detail[] = $area . ' m²';
+        }
+        if ($detail !== []) {
+            $parts[] = implode(', ', $detail);
+        }
+        return implode(' – ', $parts);
     }
 
     /** Combines getCleanInfo's state/motionState with the charge state into one of Ecovacs' own (untranslated) state keys. */
@@ -303,6 +348,21 @@ class EcovacsSaugroboter extends IPSModule
             $speedButtons .= "<button type=\"button\" onclick=\"requestAction('fanspeed', {$level})\" style=\"flex:1;border:none;border-radius:6px;padding:5px 0;font-size:11px;cursor:pointer;{$active}\">{$label}</button>";
         }
 
+        $logs = json_decode($this->ReadAttributeString('CleanLogsJson'), true);
+        $historyRows = '';
+        if (is_array($logs)) {
+            foreach (array_slice($logs, 0, 5) as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $line = htmlspecialchars($this->formatCleanLogEntry($entry), ENT_QUOTES, 'UTF-8');
+                $historyRows .= "<div style=\"font-size:11px;color:#9fb3c8;padding:3px 0;border-top:1px solid #131f33\">{$line}</div>";
+            }
+        }
+        $historyBlock = $historyRows !== ''
+            ? "<div style=\"display:flex;flex-direction:column\"><div style=\"font-size:11px;color:#6a89a8;margin-bottom:2px\">Verlauf</div>{$historyRows}</div>"
+            : '';
+
         return <<<HTML
 <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0d1520;color:#e8eef5;border-radius:12px;padding:14px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:10px">
   <div style="font-size:14px;font-weight:600;opacity:.85">{$name}</div>
@@ -320,6 +380,7 @@ class EcovacsSaugroboter extends IPSModule
     <button type="button" onclick="requestAction('dock', 1)" title="Zur Basis" style="flex:1;border:none;border-radius:8px;padding:8px 0;font-size:16px;cursor:pointer;background:#131f33;color:#e8eef5">🏠</button>
   </div>
   <div style="display:flex;gap:4px">{$speedButtons}</div>
+  {$historyBlock}
 </div>
 HTML;
     }

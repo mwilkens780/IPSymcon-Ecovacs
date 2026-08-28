@@ -23,10 +23,15 @@ Jede Saugroboter-Instanz fragt ihren Status eigenständig über die gemeinsame K
 - **Lädt** (an der Basisstation)
 - **Status**: Reinigt / Pausiert / Kehrt zur Basis zurück / Lädt / Bereit / Offline / Unbekannt
 - **Saugstufe**: Leise / Normal / Stark / Max+ (nicht jedes Modell unterstützt Max+)
+- **Letzte Reinigung**: Datum/Uhrzeit, Dauer und Fläche der letzten Reinigungssitzung; die Kachel zeigt zusätzlich die letzten fünf Sitzungen als Verlauf.
 
 ## Steuerung
 
 Über die Kachel der Saugroboter-Instanz: Start/Fortsetzen (▶️, setzt bei pausierter Reinigung automatisch fort statt neu zu starten), Pause (⏸), Stopp (⏹), zur Basis schicken (🏠) sowie Saugstufe wählen. Nach jedem Steuerbefehl wird der Status kurz danach automatisch neu abgefragt.
+
+## Einbindung ins [Room Dashboard](https://github.com/mwilkens780/IPSymcon-RoomDashboard)
+
+Im Room Dashboard gibt es eine eigene "Saugroboter"-Liste -- dort einfach den Geräteknoten der Ecovacs-Saugroboter-Instanz auswählen. Batterie, Status, Saugstufe und letzte Reinigung werden automatisch übernommen, inklusive Start/Pause/Stopp/Zur-Basis-Steuerung direkt aus dem Raum-Dashboard heraus.
 
 ## Geräteverifizierung (nur beim ersten Login nötig)
 
