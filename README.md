@@ -1,8 +1,6 @@
 # Ecovacs – IP-Symcon Modul
 
-Bindet Ecovacs-Saugroboter (Deebot) in IP-Symcon ein. Ecovacs bietet keine offizielle API an -- dieses Modul nutzt die gleiche inoffizielle Anmeldung wie die Ecovacs-App bzw. die Home-Assistant-Integration (`deebot_client`).
-
-**Phase 1 (dieser Stand):** Login, Geräteliste und Status-Anzeige (Batterie, Lade-/Reinigungsstatus). Steuerung (Start/Pause/Stopp/Andocken/Saugstufe) ist als Phase 2 geplant, nachdem diese Verbindung sich als stabil erwiesen hat -- die dafür nötige REST-Schnittstelle (`iot/devmanager.do`) ist bereits die gleiche, die auch für die Status-Abfragen verwendet wird, es muss also keine eigene MQTT-Anbindung mehr gebaut werden.
+Bindet Ecovacs-Saugroboter (Deebot) in IP-Symcon ein -- Anzeige und Steuerung. Ecovacs bietet keine offizielle API an -- dieses Modul nutzt die gleiche inoffizielle Anmeldung wie die Ecovacs-App bzw. die Home-Assistant-Integration (`deebot_client`). Sowohl Status-Abfragen als auch Steuerbefehle laufen über denselben synchronen REST-Endpunkt (`iot/devmanager.do`) -- keine eigene MQTT-Anbindung nötig.
 
 ## Installation
 
@@ -24,6 +22,11 @@ Jede Saugroboter-Instanz fragt ihren Status eigenständig über die gemeinsame K
 - **Batterie** (%)
 - **Lädt** (an der Basisstation)
 - **Status**: Reinigt / Pausiert / Kehrt zur Basis zurück / Lädt / Bereit / Offline / Unbekannt
+- **Saugstufe**: Leise / Normal / Stark / Max+ (nicht jedes Modell unterstützt Max+)
+
+## Steuerung
+
+Über die Kachel der Saugroboter-Instanz: Start/Fortsetzen (▶️, setzt bei pausierter Reinigung automatisch fort statt neu zu starten), Pause (⏸), Stopp (⏹), zur Basis schicken (🏠) sowie Saugstufe wählen. Nach jedem Steuerbefehl wird der Status kurz danach automatisch neu abgefragt.
 
 ## Geräteverifizierung (nur beim ersten Login nötig)
 
