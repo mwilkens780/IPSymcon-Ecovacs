@@ -80,6 +80,7 @@ class EcovacsSaugroboter extends IPSModule
             $batteryData = $this->fetchCommand($accountId, $did, $resource, $class, 'getBattery');
             if ($batteryData === null) {
                 // offline/unreachable already logged+statused by fetchCommand
+                $this->pushValue('__all__', $this->collectData());
                 return;
             }
             if (isset($batteryData['value'])) {
@@ -102,6 +103,7 @@ class EcovacsSaugroboter extends IPSModule
 
             $this->refreshCleanLogs($accountId, $did, $resource);
 
+            $this->pushValue('__all__', $this->collectData());
             $this->SetStatus(102);
         } catch (\Throwable $e) {
             $this->LogMessage('EcovacsVacuum Refresh: ' . $e->getMessage(), KL_ERROR);
@@ -141,6 +143,44 @@ class EcovacsSaugroboter extends IPSModule
         }
 
         return is_array($body['data'] ?? null) ? $body['data'] : [];
+    }
+
+    /** Snapshot of everything the tile needs, for both the initial render and the live push via UpdateVisualizationValue(). */
+    private function collectData(): array
+    {
+        $logs = json_decode($this->ReadAttributeString('CleanLogsJson'), true);
+        $historyLines = [];
+        if (is_array($logs)) {
+            foreach (array_slice($logs, 0, 5) as $entry) {
+                if (is_array($entry)) {
+                    $historyLines[] = $this->formatCleanLogEntry($entry);
+                }
+            }
+        }
+
+        return [
+            'battery'  => (int) $this->GetValue('Battery'),
+            'charging' => (bool) $this->GetValue('Charging'),
+            'state'    => (string) $this->GetValue('State'),
+            'fanSpeed' => (int) $this->GetValue('FanSpeed'),
+            'history'  => $historyLines,
+        ];
+    }
+
+    private function pushValue(string $key, $value): void
+    {
+        $this->UpdateVisualizationValue(json_encode(['key' => $key, 'value' => $value]));
+    }
+
+    private function batteryColor(int $battery): string
+    {
+        return $battery <= 20 ? '#e05656' : ($battery <= 50 ? '#e0b356' : '#4caf7d');
+    }
+
+    /** Encodes a translated string for safe embedding as a JS literal. */
+    private function jsStr(string $s): string
+    {
+        return json_encode($s, JSON_UNESCAPED_UNICODE);
     }
 
     /** Fetches the last cleaning sessions (ECO_GetCleanLogs), caches them for the tile's history list and updates "Letzte Reinigung". */
@@ -332,56 +372,137 @@ class EcovacsSaugroboter extends IPSModule
 
     public function GetVisualizationTile(): string
     {
-        $name = htmlspecialchars(IPS_GetName($this->InstanceID), ENT_QUOTES, 'UTF-8');
-        $battery = $this->GetValue('Battery');
-        $charging = $this->GetValue('Charging');
-        $state = htmlspecialchars($this->GetValue('State'), ENT_QUOTES, 'UTF-8');
-        $fanSpeed = $this->GetValue('FanSpeed');
+        return $this->buildDashboardHTML();
+    }
 
-        $batteryColor = $battery <= 20 ? '#e05656' : ($battery <= 50 ? '#e0b356' : '#4caf7d');
-        $chargeIcon = $charging ? ' ⚡' : '';
+    private function buildDashboardHTML(): string
+    {
+        $name = htmlspecialchars(IPS_GetName($this->InstanceID), ENT_QUOTES, 'UTF-8');
+        $d = $this->collectData();
+
+        $batteryColor = $this->batteryColor($d['battery']);
+        $chargeIcon = $d['charging'] ? ' ⚡' : '';
+        $stateEsc = htmlspecialchars($d['state'], ENT_QUOTES, 'UTF-8');
 
         $speedButtons = '';
         foreach ([1000, 0, 1, 2] as $level) {
             $label = htmlspecialchars($this->fanSpeedLabel($level), ENT_QUOTES, 'UTF-8');
-            $active = $fanSpeed === $level ? 'background:#2d5a8f;color:#fff' : 'background:#131f33;color:#9fd3ff';
-            $speedButtons .= "<button type=\"button\" onclick=\"requestAction('fanspeed', {$level})\" style=\"flex:1;border:none;border-radius:6px;padding:5px 0;font-size:11px;cursor:pointer;{$active}\">{$label}</button>";
+            $activeCls = $d['fanSpeed'] === $level ? ' active' : '';
+            $speedButtons .= "<button type=\"button\" id=\"speed_{$level}\" class=\"speed-btn{$activeCls}\" onclick=\"requestAction('fanspeed', {$level})\">{$label}</button>";
         }
 
-        $logs = json_decode($this->ReadAttributeString('CleanLogsJson'), true);
-        $historyRows = '';
-        if (is_array($logs)) {
-            foreach (array_slice($logs, 0, 5) as $entry) {
-                if (!is_array($entry)) {
-                    continue;
-                }
-                $line = htmlspecialchars($this->formatCleanLogEntry($entry), ENT_QUOTES, 'UTF-8');
-                $historyRows .= "<div style=\"font-size:11px;color:#9fb3c8;padding:3px 0;border-top:1px solid #131f33\">{$line}</div>";
-            }
-        }
-        $historyBlock = $historyRows !== ''
-            ? "<div style=\"display:flex;flex-direction:column\"><div style=\"font-size:11px;color:#6a89a8;margin-bottom:2px\">Verlauf</div>{$historyRows}</div>"
-            : '';
+        $historyInner = $this->renderHistory($d['history']);
+        $initJson = json_encode($d);
+        $verlaufJs = $this->jsStr($this->Translate('Verlauf'));
 
         return <<<HTML
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0d1520;color:#e8eef5;border-radius:12px;padding:14px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:10px">
-  <div style="font-size:14px;font-weight:600;opacity:.85">{$name}</div>
-  <div style="display:flex;align-items:center;justify-content:space-between">
-    <div style="font-size:13px;padding:4px 10px;border-radius:999px;background:#131f33;color:#9fd3ff">{$state}</div>
-    <div style="font-size:13px;color:{$batteryColor}">🔋 {$battery}%{$chargeIcon}</div>
-  </div>
-  <div style="height:6px;border-radius:3px;background:#131f33;overflow:hidden">
-    <div style="height:100%;width:{$battery}%;background:{$batteryColor}"></div>
-  </div>
-  <div style="display:flex;gap:6px">
-    <button type="button" onclick="requestAction('clean', 1)" title="Start/Fortsetzen" style="flex:1;border:none;border-radius:8px;padding:8px 0;font-size:16px;cursor:pointer;background:#2d5a8f;color:#fff">▶️</button>
-    <button type="button" onclick="requestAction('pause', 1)" title="Pause" style="flex:1;border:none;border-radius:8px;padding:8px 0;font-size:16px;cursor:pointer;background:#131f33;color:#e8eef5">⏸</button>
-    <button type="button" onclick="requestAction('stop', 1)" title="Stopp" style="flex:1;border:none;border-radius:8px;padding:8px 0;font-size:16px;cursor:pointer;background:#131f33;color:#e8eef5">⏹</button>
-    <button type="button" onclick="requestAction('dock', 1)" title="Zur Basis" style="flex:1;border:none;border-radius:8px;padding:8px 0;font-size:16px;cursor:pointer;background:#131f33;color:#e8eef5">🏠</button>
-  </div>
-  <div style="display:flex;gap:4px">{$speedButtons}</div>
-  {$historyBlock}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html{height:100%}
+*{box-sizing:border-box;margin:0;padding:0}
+body{overflow-y:auto;overflow-x:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;background:#0d1520;color:#e8eef5;display:flex;flex-direction:column;padding:14px;gap:10px}
+.header{font-size:14px;font-weight:600;opacity:.85}
+.row{display:flex;align-items:center;justify-content:space-between}
+.badge{font-size:13px;padding:4px 10px;border-radius:999px;background:#131f33;color:#9fd3ff}
+.battery-text{font-size:13px}
+.battery-bar{height:6px;border-radius:3px;background:#131f33;overflow:hidden}
+.battery-bar>div{height:100%;transition:width .3s}
+.controls{display:flex;gap:6px}
+.ctrl-btn{flex:1;border:none;border-radius:8px;padding:8px 0;font-size:16px;cursor:pointer;background:#131f33;color:#e8eef5}
+.ctrl-btn.primary{background:#2d5a8f;color:#fff}
+.speed-row{display:flex;gap:4px}
+.speed-btn{flex:1;border:none;border-radius:6px;padding:5px 0;font-size:11px;cursor:pointer;background:#131f33;color:#9fd3ff}
+.speed-btn.active{background:#2d5a8f;color:#fff}
+.history-title{font-size:11px;color:#6a89a8;margin-bottom:2px}
+.history-row{font-size:11px;color:#9fb3c8;padding:3px 0;border-top:1px solid #131f33}
+</style>
+</head>
+<body>
+<div class="header">{$name}</div>
+<div class="row">
+  <div id="state-badge" class="badge">{$stateEsc}</div>
+  <div id="battery-text" class="battery-text" style="color:{$batteryColor}">🔋 {$d['battery']}%{$chargeIcon}</div>
 </div>
+<div class="battery-bar"><div id="battery-fill" style="width:{$d['battery']}%;background:{$batteryColor}"></div></div>
+<div class="controls">
+  <button type="button" class="ctrl-btn primary" onclick="requestAction('clean', 1)" title="Start/Fortsetzen">▶️</button>
+  <button type="button" class="ctrl-btn" onclick="requestAction('pause', 1)" title="Pause">⏸</button>
+  <button type="button" class="ctrl-btn" onclick="requestAction('stop', 1)" title="Stopp">⏹</button>
+  <button type="button" class="ctrl-btn" onclick="requestAction('dock', 1)" title="Zur Basis">🏠</button>
+</div>
+<div class="speed-row">{$speedButtons}</div>
+<div id="history-block">{$historyInner}</div>
+
+<script>
+var state = {$initJson};
+var verlaufLabel = {$verlaufJs};
+
+function battColor(v) {
+  return v <= 20 ? '#e05656' : (v <= 50 ? '#e0b356' : '#4caf7d');
+}
+
+function escapeHtml(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderHistory(lines) {
+  if (!lines || lines.length === 0) return '';
+  var html = '<div class="history-title">' + verlaufLabel + '</div>';
+  for (var i = 0; i < lines.length; i++) {
+    html += '<div class="history-row">' + escapeHtml(lines[i]) + '</div>';
+  }
+  return html;
+}
+
+window.handleMessage = function(raw) {
+  var msg = JSON.parse(raw);
+  if (msg.key !== '__all__') return;
+  var val = msg.value;
+  state = val;
+
+  var badge = document.getElementById('state-badge');
+  if (badge) badge.textContent = val.state;
+
+  var color = battColor(val.battery);
+  var battText = document.getElementById('battery-text');
+  if (battText) {
+    battText.textContent = '🔋 ' + val.battery + '%' + (val.charging ? ' ⚡' : '');
+    battText.style.color = color;
+  }
+  var fill = document.getElementById('battery-fill');
+  if (fill) {
+    fill.style.width = val.battery + '%';
+    fill.style.background = color;
+  }
+
+  [1000, 0, 1, 2].forEach(function(level) {
+    var btn = document.getElementById('speed_' + level);
+    if (btn) btn.classList.toggle('active', val.fanSpeed === level);
+  });
+
+  var hist = document.getElementById('history-block');
+  if (hist) hist.innerHTML = renderHistory(val.history);
+};
+</script>
+</body>
+</html>
 HTML;
+    }
+
+    private function renderHistory(array $lines): string
+    {
+        if ($lines === []) {
+            return '';
+        }
+        $rows = '';
+        foreach ($lines as $line) {
+            $rows .= '<div class="history-row">' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . '</div>';
+        }
+        return '<div class="history-title">' . $this->Translate('Verlauf') . '</div>' . $rows;
     }
 }
